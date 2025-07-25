@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- The title now uses the new name automatically -->
+    <title>{{ assistant_name }} - AI Assistant</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background-color: #121212; color: #e0e0e0; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; text-align: center; }
+        .container { display: flex; flex-direction: column; align-items: center; gap: 25px; }
+        h1 { font-weight: 300; letter-spacing: 2px; font-size: 2.5em; }
+        #status { font-size: 1.2em; min-height: 1.5em; color: #bb86fc; }
+        #log { font-size: 0.9em; color: #b0b0b0; max-width: 500px; min-height: 1.2em; }
+        #mic-button { width: 120px; height: 120px; border-radius: 50%; border: none; cursor: pointer; background: linear-gradient(145deg, #2c2c2c, #1a1a1a); box-shadow: 8px 8px 16px #0d0d0d, -8px -8px 16px #3b3b3b; display: flex; justify-content: center; align-items: center; transition: all 0.3s ease; }
+        #mic-button:disabled { background-color: #555; cursor: not-allowed; box-shadow: none; }
+        #mic-button:hover:not(:disabled) { transform: scale(1.05); }
+        #logo { width: 60%; height: 60%; transition: all 0.3s ease; }
+        .logo-circle { fill: none; stroke: #bb86fc; stroke-width: 4; transform-origin: 50% 50%; transition: stroke-opacity 0.5s ease; }
+        #mic-button.listening { animation: pulse-glow 2s infinite; }
+        #mic-button.listening .logo-circle { stroke-opacity: 0; animation: pulse-wave 2s infinite; }
+        #mic-button.listening .circle-2 { animation-delay: 0.3s; }
+        #mic-button.listening .circle-3 { animation-delay: 0.6s; }
+        @keyframes pulse-glow { 0% { box-shadow: 8px 8px 16px #0d0d0d, -8px -8px 16px #3b3b3b, 0 0 5px #bb86fc; } 50% { box-shadow: 8px 8px 16px #0d0d0d, -8px -8px 16px #3b3b3b, 0 0 30px #bb86fc; } 100% { box-shadow: 8px 8px 16px #0d0d0d, -8px -8px 16px #3b3b3b, 0 0 5px #bb86fc; } }
+        @keyframes pulse-wave { 0% { transform: scale(0.5); stroke-opacity: 0; } 50% { stroke-opacity: 1; } 100% { transform: scale(1.2); stroke-opacity: 0; } }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- The h1 tag will now display "Maitri" -->
+        <h1>{{ assistant_name }}</h1>
+        <button id="mic-button">
+            <svg id="logo" viewBox="0 0 100 100">
+                <circle class="logo-circle circle-1" cx="50" cy="50" r="15"></circle>
+                <circle class="logo-circle circle-2" cx="50" cy="50" r="30"></circle>
+                <circle class="logo-circle circle-3" cx="50" cy="50" r="45"></circle>
+            </svg>
+        </button>
+        <div id="status">Click the mic to activate {{ assistant_name }}.</div>
+        <div id="log"></div>
+    </div>
+
+    <script>
+        const micButton = document.getElementById('mic-button');
+        const statusDiv = document.getElementById('status');
+        const logDiv = document.getElementById('log');
+
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        let recognition;
+        let isListening = false;
+        let assistantActive = false;
+        
+        // --- NEW: Variables for the new voice ---
+        let femaleVoice = null;
+
+        // --- NEW: This function finds and loads a female voice ---
+        function loadFemaleVoice() {
+            const voices = window.speechSynthesis.getVoices();
+            // Search for common, high-quality female voices.
+            femaleVoice = voices.find(voice => voice.name.includes('Female')) || 
+                          voices.find(voice => voice.name.includes('Zira')) || 
+                          voices.find(voice => voice.name.includes('Google US English')) || // A good fallback
+                          voices.find(voice => voice.lang === 'en-US'); // A final fallback
+            if(femaleVoice) {
+                console.log("Female voice selected:", femaleVoice.name);
+            } else {
+                console.log("No specific female voice found, using browser default.");
+            }
+        }
+        
+        // The browser loads voices asynchronously, so we need to wait for them.
+        window.speechSynthesis.onvoiceschanged = loadFemaleVoice;
+        loadFemaleVoice(); // Attempt to load immediately in case they're already cached.
+
+
+        if (SpeechRecognition) {
+            recognition = new SpeechRecognition();
+            // ... (rest of recognition setup is the same) ...
+            recognition.continuous = false;
+            recognition.lang = 'en-US';
+            recognition.interimResults = false;
+
+            recognition.onstart = () => { isListening = true; micButton.classList.add('listening'); statusDiv.textContent = "Listening..."; };
+            recognition.onresult = (event) => { const transcript = event.results[0][0].transcript; logDiv.textContent = `You said: "${transcript}"`; statusDiv.textContent = "Thinking..."; processTranscript(transcript); };
+            recognition.onend = () => { isListening = false; micButton.classList.remove('listening'); if(assistantActive) { startListening(); } };
+            recognition.onerror = (event) => { logDiv.textContent = `Error: ${event.error}. Listening again...`; if(assistantActive) { setTimeout(startListening, 1000); } };
+        } else {
+            statusDiv.textContent = "Speech Recognition not supported in this browser."; micButton.disabled = true;
+        }
+
+        function startListening() { if (!isListening) { try { recognition.start(); } catch(e) { /* ignore */ } } }
+
+        micButton.addEventListener('click', () => {
+            if (!assistantActive) {
+                assistantActive = true;
+                // Updated welcome message
+                const welcomeMessage = `Hello, I am {{ assistant_name }}. I am now online.`;
+                speak(welcomeMessage, true);
+            } else {
+                if (isListening) { recognition.stop(); assistantActive = false; statusDiv.textContent = "Click the mic to activate again."; }
+                else { startListening(); }
+            }
+        });
+
+        async function processTranscript(transcript) {
+            try {
+                const response = await fetch('/ask', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: transcript }) });
+                const data = await response.json();
+                if (data.speak_text) {
+                    logDiv.textContent = `Maitri says: "${data.speak_text}"`;
+                    speak(data.speak_text, true); 
+                }
+                if (data.action_url) { window.open(data.action_url, '_blank'); }
+            } catch (error) {
+                statusDiv.textContent = "Error connecting to the assistant.";
+            }
+        }
+
+        // --- UPDATED: The speak function now uses the selected female voice ---
+        function speak(text, listenAfter = false) {
+            statusDiv.textContent = "Speaking...";
+            const utterance = new SpeechSynthesisUtterance(text);
+            
+            // Assign the female voice if it has been found
+            if (femaleVoice) {
+                utterance.voice = femaleVoice;
+            }
+            
+            utterance.onend = () => {
+                if (listenAfter) { statusDiv.textContent = "Ready for your command..."; startListening(); }
+                else { statusDiv.textContent = "Click the mic to start."; }
+            };
+            window.speechSynthesis.speak(utterance);
+        }
+    </script>
+</body>
+</html>
